@@ -1,0 +1,117 @@
+on:
+  push:
+    branches:
+      - dev
+      - staging
+      - prod
+
+env:
+  SERVICE_NAME: 'backoffice'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v2
+      - name: Use the Node.js 16
+        uses: actions/setup-node@v1
+        with:
+          node-version: 16.x
+      - name: install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1
+
+
+      - name: Set env vars (dev)
+        if: endsWith(github.ref, '/dev')
+        run: |
+          echo "AWS_PROFILE=aloveadmin-dev" >> $GITHUB_ENV    
+          echo "STAGE=dev" >> $GITHUB_ENV
+          echo "SITE_URL=https://backoffice-dev.algoaitech.io" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.ALOVEADMIN_DEV_AWS_KEY }}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.ALOVEADMIN_DEV_AWS_SECRET }}" >> $GITHUB_ENV
+      - name: Set env vars (staging)
+        if: endsWith(github.ref, '/staging')
+        run: |
+          echo "AWS_PROFILE=aloveadmin-staging" >> $GITHUB_ENV    
+          echo "STAGE=staging" >> $GITHUB_ENV
+          echo "SITE_URL=https://backoffice-staging.algoaitech.io" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.ALOVEADMIN_STAGING_AWS_KEY }}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.ALOVEADMIN_STAGING_AWS_SECRET }}" >> $GITHUB_ENV
+      - name: Set env vars (prod)
+        if: endsWith(github.ref, '/prod')
+        run: |
+          echo "AWS_PROFILE=aloveadmin-prod" >> $GITHUB_ENV    
+          echo "STAGE=prod" >> $GITHUB_ENV
+          echo "SITE_URL=https://backoffice.algoaitech.io" >> $GITHUB_ENV
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.ALOVEADMIN_PROD_AWS_KEY }}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.ALOVEADMIN_PROD_AWS_SECRET }}" >> $GITHUB_ENV
+      - name: Configure AWS credentials
+        run: |
+          mkdir -p ~/.aws      
+          echo "[$AWS_PROFILE]" > ~/.aws/credentials
+          echo "aws_access_key_id = $AWS_ACCESS_KEY_ID" >> ~/.aws/credentials
+          echo "aws_secret_access_key = $AWS_SECRET_ACCESS_KEY" >> ~/.aws/credentials
+          echo "[profile $AWS_PROFILE]" > ~/.aws/config
+          echo "region = $AWS_REGION" >> ~/.aws/config
+      - name: npm login to CodeArtifact
+        run: |
+          AWS_ACCOUNT_NUMBER=`aws sts get-caller-identity --query "Account" --output text`
+          echo "AWS_ACCOUNT_NUMBER=$AWS_ACCOUNT_NUMBER" >> $GITHUB_ENV
+          aws codeartifact login --tool npm --repository $AWS_PROFILE --domain "$AWS_PROFILE"-domain --domain-owner $AWS_ACCOUNT_NUMBER
+      - name: Install NPM dependencies
+        run: |
+          rm -f package-lock.json
+          npm install
+      - name: Run build-${{env.STAGE}}
+        run: npm run build-${{env.STAGE}}
+      - name: Distribute to ${{env.STAGE}} enviroment
+        run: npm run dist-${{env.STAGE}}
+      - name: Success Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        if: success()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_TITLE: ":sunglasses: Successfully built ${{ env.SERVICE_NAME }} :sunglasses:"
+          SLACK_COLOR: ${{ job.status }}
+          SLACK_ICON_EMOJI: ':sunglasses:'
+          SLACK_FOOTER: ${{ env.SITE_URL }}
+      - name: Failed Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        if: failure()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_TITLE: ":worried: Failed to build ${{ env.SERVICE_NAME }} :worried:"
+          SLACK_COLOR: ${{ job.status }}
+          SLACK_ICON_EMOJI: ':worried:'
+
+#      - name: Backoffice Channel Staging/Prod Notification
+#        uses: rtCamp/action-slack-notify@v2
+#        if: success() && (endsWith(github.ref, '/staging') || endsWith(github.ref, '/prod'))
+#        env:
+#          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL_TO_PRODUCT }}
+#          SLACK_TITLE: ":rocket: A new ${{ env.STAGE }} was released :rocket:"
+#          SLACK_COLOR: ${{ job.status }}
+#          SLACK_ICON_EMOJI: ':rocket:'
+#          SLACK_FOOTER: ${{ env.SITE_URL }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
